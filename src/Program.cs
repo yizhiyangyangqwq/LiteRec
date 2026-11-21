@@ -69,6 +69,27 @@ namespace LiteRec
         /// </summary>
         internal static string CursorImagePath = null;
 
+        /// <summary>
+        /// 读取当前系统光标主题的 .cur 路径（注册表 Control Panel\Cursors 的 Arrow 值）。
+        /// 放大光标时用它取内嵌的高分辨率帧，避免拉伸 32px 原图产生锯齿。
+        /// </summary>
+        internal static string DetectSystemCursorFile()
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.CurrentUser
+                    .OpenSubKey("Control Panel\\Cursors", false))
+                {
+                    if (k == null) return null;
+                    string p = k.GetValue("Arrow") as string;
+                    if (string.IsNullOrEmpty(p)) return null;
+                    p = Environment.ExpandEnvironmentVariables(p);
+                    return System.IO.File.Exists(p) ? p : null;
+                }
+            }
+            catch { return null; }
+        }
+
         [STAThread]
         private static void Main(string[] args)
         {

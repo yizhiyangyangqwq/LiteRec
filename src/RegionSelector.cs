@@ -13,10 +13,26 @@ namespace LiteRec
         private Point _start;
         private Point _current;
         private bool _selecting;
+        /// <summary>选区（窗口客户区坐标，仅用于绘制）。</summary>
         private Rectangle _region;
         private readonly Rectangle _virtual;
 
-        public Rectangle SelectedRegion { get { return _region; } }
+        /// <summary>
+        /// 选中的区域，已换算成**屏幕坐标**（录制抓屏用的是屏幕坐标）。
+        /// 之前直接返回客户区坐标，多显示器且虚拟桌面原点非 (0,0) 时会整体偏移。
+        /// </summary>
+        public Rectangle SelectedRegion
+        {
+            get
+            {
+                if (_region.Width <= 0 || _region.Height <= 0) return Rectangle.Empty;
+                return new Rectangle(_region.X + _virtual.X, _region.Y + _virtual.Y,
+                    _region.Width, _region.Height);
+            }
+        }
+
+        /// <summary>整个虚拟桌面（屏幕坐标）。</summary>
+        public Rectangle FullVirtualScreen { get { return _virtual; } }
 
         public RegionSelector()
         {
@@ -183,10 +199,16 @@ namespace LiteRec
             }
         }
 
+        /// <summary>整屏 = 客户区从 (0,0) 开始的全部（SelectedRegion 会换算成屏幕坐标）。</summary>
+        private Rectangle WholeClient
+        {
+            get { return new Rectangle(0, 0, _virtual.Width, _virtual.Height); }
+        }
+
         protected override void OnDoubleClick(EventArgs e)
         {
             base.OnDoubleClick(e);
-            _region = _virtual;
+            _region = WholeClient;
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -202,7 +224,7 @@ namespace LiteRec
             }
             else if (e.KeyCode == Keys.Enter)
             {
-                _region = _virtual;
+                _region = WholeClient;
                 DialogResult = DialogResult.OK;
                 Close();
             }

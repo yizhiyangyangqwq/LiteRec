@@ -112,25 +112,24 @@ LiteRec.Test.exe mp4 3 audio    :: 录 3 秒 MP4 + 系统声音（自动播放�
 
 ## 放大鼠标指针（录教程 / 宣传片）
 
-系统光标只有 32px，直接拉伸必然锯齿。而现代光标主题的 `.cur` 往往内嵌多个尺寸
-（实测 Windows 11 概念版 `pointer.cur` 含 32/48/64/**96**），LiteRec 能直接取那一帧**原图 1:1 输出**：
+设置里有 **「鼠标大小」** 下拉：原始 / 中号 48px / 大号 64px / 超大 96px。
+
+原理：系统光标只有 32px，直接拉伸必然锯齿。而现代光标主题的 `.cur` 往往内嵌多个尺寸
+（实测 Windows 11 概念版 `pointer.cur` 含 32/48/64/**96**），LiteRec 会直接取那一帧**原图**，
+取到什么尺寸就用什么尺寸，**不拉伸所以不糊**。
+
+命令行也能指定（适合做快捷方式）：
 
 ```cmd
-:: 推荐：用 .cur 里的高分辨率帧，锐利无锯齿
 LiteRec.exe --cursor-image "C:\Windows\Cursors\W11_light_v2.2\base\pointer.cur"
-
-:: 或者仅按倍数拉伸系统光标（会有锯齿）
 LiteRec.exe --cursor-scale 2.5
-
-:: 两者可叠加
-LiteRec.exe --cursor-image "path\to\pointer.cur" --cursor-scale 1.5
 ```
 
 | 系统光标拉伸 3× | 取 96px 原图 |
 | --- | --- |
 | ![](docs/cursor-test/cursor-stretched.png) | ![](docs/cursor-test/cursor-hires.png) |
 
-不带参数时行为与之前完全一致（原始大小），不影响正常使用。
+选「原始」时行为与以前完全一致。
 
 ## 已知限制
 

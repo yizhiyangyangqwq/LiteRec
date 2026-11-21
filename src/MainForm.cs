@@ -17,6 +17,7 @@ namespace LiteRec
         private readonly NumericUpDown _qualityBox;
         private readonly ComboBox _formatBox;
         private readonly CheckBox _cursorBox;
+        private readonly ComboBox _cursorSizeBox;
         private readonly CheckBox _audioBox;
         private readonly CheckBox _hideBarBox;
         private readonly Button _hotkeyBtn;
@@ -137,7 +138,7 @@ namespace LiteRec
             // ---- 设置面板（默认隐藏） ----
             _settingsPanel = new Panel();
             _settingsPanel.Location = new Point(0, 190);
-            _settingsPanel.Size = new Size(360, 304);
+            _settingsPanel.Size = new Size(360, 338);
             _settingsPanel.BackColor = Color.FromArgb(26, 26, 30);
             _settingsPanel.Visible = false;
             Controls.Add(_settingsPanel);
@@ -214,6 +215,20 @@ namespace LiteRec
             _audioBox.AutoSize = true;
             _audioBox.Location = new Point(140, y);
             _settingsPanel.Controls.Add(_audioBox);
+
+            y += 34;
+            Label lcs = MakeLabel("鼠标大小", 20, y);
+            _settingsPanel.Controls.Add(lcs);
+
+            _cursorSizeBox = new ComboBox();
+            _cursorSizeBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cursorSizeBox.Items.AddRange(new object[] {
+                "原始", "中号 (1.5×)", "大号 (2×)", "超大 (3×)"
+            });
+            _cursorSizeBox.SelectedIndex = 0;
+            _cursorSizeBox.Location = new Point(96, y - 3);
+            _cursorSizeBox.Size = new Size(160, 24);
+            _settingsPanel.Controls.Add(_cursorSizeBox);
 
             y += 34;
             _hideBarBox = new CheckBox();
@@ -343,7 +358,7 @@ namespace LiteRec
             _settingsOpen = !_settingsOpen;
             _settingsPanel.Visible = _settingsOpen;
             _settingsBtn.Text = _settingsOpen ? "设置 ▴" : "设置 ▾";
-            ClientSize = new Size(360, _settingsOpen ? 494 : 190);
+            ClientSize = new Size(360, _settingsOpen ? 528 : 190);
 
             // 展开后窗口变高：若底部超出工作区，整体上移保证设置项都可见
             Rectangle wa = Screen.FromHandle(Handle).WorkingArea;
@@ -364,6 +379,7 @@ namespace LiteRec
             _qualityBox.Value = _settings.Quality;
             _formatBox.SelectedIndex = _settings.Format;
             _cursorBox.Checked = _settings.DrawCursor;
+            _cursorSizeBox.SelectedIndex = _settings.CursorSize;
             _audioBox.Checked = _settings.RecordAudio;
             _hideBarBox.Checked = _settings.HideBar;
             UpdateHotkeyButton();
@@ -380,6 +396,7 @@ namespace LiteRec
             _qualityBox.ValueChanged += delegate { SaveSettingsFromUi(); };
             _formatBox.SelectedIndexChanged += delegate { SaveSettingsFromUi(); };
             _cursorBox.CheckedChanged += delegate { SaveSettingsFromUi(); };
+            _cursorSizeBox.SelectedIndexChanged += delegate { SaveSettingsFromUi(); };
             _audioBox.CheckedChanged += delegate { SaveSettingsFromUi(); };
             _hideBarBox.CheckedChanged += delegate { SaveSettingsFromUi(); };
         }
@@ -457,6 +474,20 @@ namespace LiteRec
             }
 
             Keys final = mods | bare;
+
+            // 全局热键会吞掉整个键盘：如果允许设成单独的字母/数字，
+            // 选 "A" 之后就打不出 a 了。所以裸键只允许 F1–F24，
+            // 其他键必须带 Ctrl/Shift/Alt。
+            bool hasModifier = (final & (Keys.Control | Keys.Shift | Keys.Alt)) != Keys.None;
+            bool isFunctionKey = bare >= Keys.F1 && bare <= Keys.F24;
+            if (!hasModifier && !isFunctionKey)
+            {
+                SetStatus("该键会屏蔽正常输入，请改用 F1–F24 或加 Ctrl/Shift/Alt");
+                ApplyHotkey();   // 恢复原热键
+                UpdateHotkeyButton();
+                return true;
+            }
+
             _settings.Hotkey = (int)final;
             _settings.Save();
             ApplyHotkey();
@@ -487,6 +518,7 @@ namespace LiteRec
             _settings.Quality = (int)_qualityBox.Value;
             _settings.Format = _formatBox.SelectedIndex;
             _settings.DrawCursor = _cursorBox.Checked;
+            _settings.CursorSize = _cursorSizeBox.SelectedIndex;
             _settings.RecordAudio = _audioBox.Checked;
             _settings.HideBar = _hideBarBox.Checked;
             _settings.Save();
@@ -702,8 +734,25 @@ namespace LiteRec
             opt.JpegQuality = (int)_qualityBox.Value * 10;
             opt.BitrateKbps = (int)_qualityBox.Value * 1000;
             opt.DrawCursor = _cursorBox.Checked;
-            opt.CursorScale = Program.CursorScale;
-            opt.CursorImagePath = Program.CursorImagePath;
+
+            // 鼠标大小档位 → 目标像素（原始 32 / 中 48 / 大 64 / 超大 96）
+            int[] cursorTargets = new int[] { 0, 48, 64, 96 };
+            int ci2 = _cursorSizeBox.SelectedIndex;
+            if (ci2 < 0 || ci2 > 3) ci2 = 0;
+            opt.CursorTargetPx = cursorTargets[ci2];
+            opt.CursorScale = 1.0;
+
+            // 需要放大时，优先用 .cur 内嵌的高分辨率帧（取到对应尺寸就是 1:1，最清晰）
+            if (opt.CursorTargetPx > 0)
+            {
+                string img = Program.CursorImagePath;
+                if (string.IsNullOrEmpty(img)) img = Program.DetectSystemCursorFile();
+                opt.CursorImagePath = img;
+            }
+            else
+            {
+                opt.CursorImagePath = Program.CursorImagePath;
+            }
             // 音频仅 MP4 支持；AVI 容器没有音轨，自动禁用
             opt.RecordAudio = _audioBox.Checked && fmt == OutputFormat.Mp4;
             opt.Format = fmt;
@@ -749,6 +798,11 @@ namespace LiteRec
                         "系统声音没能启动，本次录像将只有画面。\n\n原因：" + _recorder.AudioError
                         + "\n\n常见原因：没有播放设备、音频设备被占用或被禁用。",
                         "LiteRec", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                else if (_audioBox.Checked && fmt == OutputFormat.Avi)
+                {
+                    // 勾了录音但选了 AVI：音频被跳过，必须说明，不能静默
+                    SetStatus("录制中（AVI 不支持音轨，本次无声音）");
                 }
 
                 if (_minimizeOnRecord) WindowState = FormWindowState.Minimized;

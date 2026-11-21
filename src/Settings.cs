@@ -18,6 +18,8 @@ namespace LiteRec
         public int Quality = 8;
         public int Format;          // 0 = MP4, 1 = AVI
         public bool DrawCursor = true;
+        /// <summary>光标放大档位：0=原始 1=中(1.5x) 2=大(2x) 3=超大(3x)</summary>
+        public int CursorSize;
         public int Mode;            // 0 = 全屏, 1 = 选择区域
         public bool RecordAudio = true;
         // 全局快捷键的 Keys 值（默认 F9 = 120）。0 表示无效。
@@ -99,6 +101,9 @@ namespace LiteRec
                         case "cursor":
                             s.DrawCursor = ParseBool(val, s.DrawCursor);
                             break;
+                        case "cursorsize":
+                            s.CursorSize = Clamp(ParseInt(val, s.CursorSize), 0, 3);
+                            break;
                         case "mode":
                             s.Mode = Clamp(ParseInt(val, s.Mode), 0, 1);
                             break;
@@ -140,6 +145,7 @@ namespace LiteRec
                 sb.AppendLine("Quality=" + Quality);
                 sb.AppendLine("Format=" + Format);
                 sb.AppendLine("Cursor=" + (DrawCursor ? 1 : 0));
+                sb.AppendLine("CursorSize=" + CursorSize);
                 sb.AppendLine("Mode=" + Mode);
                 sb.AppendLine("Audio=" + (RecordAudio ? 1 : 0));
                 sb.AppendLine("Hotkey=" + Hotkey);

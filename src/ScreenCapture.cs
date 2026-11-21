@@ -38,20 +38,29 @@ namespace LiteRec
         private Graphics _memG;
 
         public ScreenCapture(int srcX, int srcY, int width, int height, bool drawCursor)
-            : this(srcX, srcY, width, height, drawCursor, 1.0, null)
+            : this(srcX, srcY, width, height, drawCursor, 1.0, null, 0)
         {
         }
 
         public ScreenCapture(int srcX, int srcY, int width, int height,
             bool drawCursor, double cursorScale)
-            : this(srcX, srcY, width, height, drawCursor, cursorScale, null)
+            : this(srcX, srcY, width, height, drawCursor, cursorScale, null, 0)
+        {
+        }
+
+        public ScreenCapture(int srcX, int srcY, int width, int height,
+            bool drawCursor, double cursorScale, string cursorImagePath)
+            : this(srcX, srcY, width, height, drawCursor, cursorScale, cursorImagePath, 0)
         {
         }
 
         /// <param name="cursorScale">光标放大倍数，1.0 = 原始大小。</param>
         /// <param name="cursorImagePath">可选：.cur 文件路径，用其中的高分辨率帧替代系统光标。</param>
+        /// <param name="targetCursorPx">可选：目标光标像素尺寸（如 48/64/96）。
+        /// 大于 0 时忽略 cursorScale，直接按目标像素换算——这样"中号"就真的是 48px，
+        /// 不会因为源图是 96px 而放大成 144px。</param>
         public ScreenCapture(int srcX, int srcY, int width, int height,
-            bool drawCursor, double cursorScale, string cursorImagePath)
+            bool drawCursor, double cursorScale, string cursorImagePath, int targetCursorPx)
         {
             // JPEG/视频编码要求偶数尺寸
             _srcX = srcX;
@@ -95,6 +104,20 @@ namespace LiteRec
                     _memG = Graphics.FromImage(_wrapped);
                     _memG.InterpolationMode = InterpolationMode.HighQualityBicubic;
                     _memG.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                }
+
+                // 按目标像素换算缩放：这样"中号"就是真的 48px，
+                // 不会因为源图是 96px 而变成 144px。
+                if (targetCursorPx > 0)
+                {
+                    int basePx = (_cursorImg != null)
+                        ? _cursorImg.Image.Width
+                        : Gdi.GetSystemMetrics(13);
+                    if (basePx <= 0) basePx = 32;
+                    double s = (double)targetCursorPx / basePx;
+                    if (s < 0.2) s = 0.2;
+                    if (s > 8.0) s = 8.0;
+                    _cursorScale = s;
                 }
             }
             finally
