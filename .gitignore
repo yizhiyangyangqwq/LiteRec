@@ -1,0 +1,20 @@
+# ---- build outputs (download releases instead of committing binaries) ----
+*.exe
+*.pdb
+*.obj
+*.ilk
+
+# ---- build/IDE caches ----
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# ---- local test artifacts ----
+*.log
+*.tmp
+TestResults/
+
+# keep the icon and docs
+!assets/*.ico

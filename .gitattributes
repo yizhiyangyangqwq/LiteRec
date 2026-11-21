@@ -1,0 +1,11 @@
+# Normalize line endings: source LF, Windows scripts CRLF
+* text=auto
+
+*.cs    text
+*.md    text
+*.yml   text eol=lf
+*.cmd   text eol=crlf
+
+*.png   binary
+*.ico   binary
+*.exe   binary

@@ -1,0 +1,79 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Locate C# compiler
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+            "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+          )
+          $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $found) { throw "csc.exe not found on this runner" }
+          Write-Host "Using: $found"
+          & $found /? 2>&1 | Select-Object -First 1
+
+      - name: Build
+        shell: cmd
+        env:
+          CI: "true"
+        run: build.cmd
+
+      - name: Verify output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path LiteRec.exe)) { throw "LiteRec.exe was not produced" }
+          $kb = [math]::Round((Get-Item LiteRec.exe).Length / 1KB, 1)
+          Write-Host "LiteRec.exe = $kb KB"
+          $v = (Get-Item LiteRec.exe).VersionInfo
+          Write-Host "Version: $($v.FileVersion)  Copyright: $($v.LegalCopyright)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiteRec
+          path: |
+            LiteRec.exe
+            LiteRec.Test.exe
+            README.md
+            LICENSE
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            LiteRec.exe
+            LiteRec.Test.exe
+          generate_release_notes: true
+          body: |
+            ## LiteRec ${{ github.ref_name }}
+
+            **下载 `LiteRec.exe`，双击即用。** 无需安装，无需 .NET 运行时（用系统自带的）。
+
+            ### 系统要求
+            - Windows 10 / 11 (64-bit)
+            - 系统自带 .NET Framework 4.x
+
+            ### 说明
+            - 录制系统声音需勾选「录制系统声音」（默认开），仅 MP4 格式支持
+            - 只录系统播放的声音，不录麦克风
+            - 详见 [README](https://github.com/${{ github.repository }}#readme)
