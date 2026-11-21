@@ -6,12 +6,12 @@
 
 单文件 · 免安装 · 零依赖 · 零后台常驻
 
-[![Build](https://github.com/USER/LiteRec/actions/workflows/build.yml/badge.svg)](https://github.com/USER/LiteRec/actions/workflows/build.yml)
+[![Build](https://github.com/yangyangqwq/LiteRec/actions/workflows/build.yml/badge.svg)](https://github.com/yangyangqwq/LiteRec/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Size](https://img.shields.io/badge/size-92%20KB-brightgreen.svg)](#为什么只有-92-kb)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-lightgrey.svg)](#系统要求)
 
-[下载](https://github.com/USER/LiteRec/releases/latest) · [为什么这么小](#为什么只有-92-kb) · [实测数据](#实测数据) · [已知限制](#已知限制) · [自己编译](#自己编译)
+[下载](https://github.com/yangyangqwq/LiteRec/releases/latest) · [为什么这么小](#为什么只有-92-kb) · [实测数据](#实测数据) · [已知限制](#已知限制) · [自己编译](#自己编译)
 
 </div>
 
