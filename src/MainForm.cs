@@ -702,6 +702,8 @@ namespace LiteRec
             opt.JpegQuality = (int)_qualityBox.Value * 10;
             opt.BitrateKbps = (int)_qualityBox.Value * 1000;
             opt.DrawCursor = _cursorBox.Checked;
+            opt.CursorScale = Program.CursorScale;
+            opt.CursorImagePath = Program.CursorImagePath;
             // 音频仅 MP4 支持；AVI 容器没有音轨，自动禁用
             opt.RecordAudio = _audioBox.Checked && fmt == OutputFormat.Mp4;
             opt.Format = fmt;

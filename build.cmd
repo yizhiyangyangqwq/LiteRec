@@ -29,11 +29,11 @@ set "ICONOPTS="
 if exist "%ICON%" set "ICONOPTS=/win32icon:%ICON%"
 
 echo [1/3] Building LiteRec.exe ...
-"%CSC%" %COMMON% %ICONOPTS% /target:winexe /out:"%OUT1%" "%SRC%\AssemblyInfo.cs" "%SRC%\Program.cs" "%SRC%\MainForm.cs" "%SRC%\Settings.cs" "%SRC%\Interop.cs" "%SRC%\MfNative.cs" "%SRC%\AudioCapture.cs" "%SRC%\GlobalHotkey.cs" "%SRC%\ScreenCapture.cs" "%SRC%\AviWriter.cs" "%SRC%\Mp4Writer.cs" "%SRC%\Recorder.cs" "%SRC%\RegionSelector.cs" "%SRC%\ControlBar.cs"
+"%CSC%" %COMMON% %ICONOPTS% /target:winexe /out:"%OUT1%" "%SRC%\AssemblyInfo.cs" "%SRC%\Program.cs" "%SRC%\MainForm.cs" "%SRC%\Settings.cs" "%SRC%\Interop.cs" "%SRC%\MfNative.cs" "%SRC%\AudioCapture.cs" "%SRC%\GlobalHotkey.cs" "%SRC%\ScreenCapture.cs" "%SRC%\CursorImage.cs" "%SRC%\AviWriter.cs" "%SRC%\Mp4Writer.cs" "%SRC%\Recorder.cs" "%SRC%\RegionSelector.cs" "%SRC%\ControlBar.cs"
 if errorlevel 1 goto fail
 
 echo [2/3] Building LiteRec.Test.exe ...
-"%CSC%" %COMMON% /target:exe /out:"%OUT2%" "%SRC%\TestMain.cs" "%SRC%\Interop.cs" "%SRC%\MfNative.cs" "%SRC%\AudioCapture.cs" "%SRC%\ScreenCapture.cs" "%SRC%\AviWriter.cs" "%SRC%\Mp4Writer.cs" "%SRC%\Recorder.cs"
+"%CSC%" %COMMON% /target:exe /out:"%OUT2%" "%SRC%\TestMain.cs" "%SRC%\Interop.cs" "%SRC%\MfNative.cs" "%SRC%\AudioCapture.cs" "%SRC%\ScreenCapture.cs" "%SRC%\CursorImage.cs" "%SRC%\AviWriter.cs" "%SRC%\Mp4Writer.cs" "%SRC%\Recorder.cs"
 if errorlevel 1 goto fail
 
 echo [3/3] Done.

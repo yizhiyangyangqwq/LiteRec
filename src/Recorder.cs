@@ -19,6 +19,10 @@ namespace LiteRec
         public int BitrateKbps = 8000;
         public int JpegQuality = 80;
         public bool DrawCursor = true;
+        /// <summary>光标放大倍数（1.0 = 原始大小）。用于宣传片/教程录制。</summary>
+        public double CursorScale = 1.0;
+        /// <summary>可选：.cur 光标文件路径，用其中高分辨率帧替代系统光标。</summary>
+        public string CursorImagePath;
         public OutputFormat Format = OutputFormat.Mp4;
         public string OutputPath;
         /// <summary>是否录制系统声音（WASAPI 环路捕获）。仅 MP4 生效。</summary>
@@ -160,7 +164,8 @@ namespace LiteRec
                 comInit = true; // S_FALSE(1) 也算成功
 
                 cap = new ScreenCapture(_opt.Source.X, _opt.Source.Y,
-                    _opt.Source.Width, _opt.Source.Height, _opt.DrawCursor);
+                    _opt.Source.Width, _opt.Source.Height, _opt.DrawCursor,
+                    _opt.CursorScale, _opt.CursorImagePath);
 
                 _actualPath = _opt.OutputPath;
 

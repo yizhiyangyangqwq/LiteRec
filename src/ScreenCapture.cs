@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -17,6 +18,7 @@ namespace LiteRec
         private readonly int _srcX;
         private readonly int _srcY;
         private readonly bool _drawCursor;
+        private readonly double _cursorScale;
 
         private IntPtr _memDC;
         private IntPtr _hBitmap;
@@ -25,7 +27,31 @@ namespace LiteRec
         private Bitmap _wrapped;
         private bool _disposed;
 
+        // 光标热点缓存：每帧都调 GetIconInfo 会分配两张位图，太浪费。
+        // 只在光标句柄变化时查一次（箭头/文字/手型切换时才变）。
+        private IntPtr _lastCursor;
+        private int _hotspotX;
+        private int _hotspotY;
+
+        // 高分辨率光标（从 .cur 里取 96px 帧），画的时候 1:1，不拉伸所以不糊
+        private CursorImage _cursorImg;
+        private Graphics _memG;
+
         public ScreenCapture(int srcX, int srcY, int width, int height, bool drawCursor)
+            : this(srcX, srcY, width, height, drawCursor, 1.0, null)
+        {
+        }
+
+        public ScreenCapture(int srcX, int srcY, int width, int height,
+            bool drawCursor, double cursorScale)
+            : this(srcX, srcY, width, height, drawCursor, cursorScale, null)
+        {
+        }
+
+        /// <param name="cursorScale">光标放大倍数，1.0 = 原始大小。</param>
+        /// <param name="cursorImagePath">可选：.cur 文件路径，用其中的高分辨率帧替代系统光标。</param>
+        public ScreenCapture(int srcX, int srcY, int width, int height,
+            bool drawCursor, double cursorScale, string cursorImagePath)
         {
             // JPEG/视频编码要求偶数尺寸
             _srcX = srcX;
@@ -35,6 +61,7 @@ namespace LiteRec
             if (_width < 16) _width = 16;
             if (_height < 16) _height = 16;
             _drawCursor = drawCursor;
+            _cursorScale = cursorScale < 0.5 ? 0.5 : (cursorScale > 8.0 ? 8.0 : cursorScale);
 
             IntPtr screenDC = Gdi.GetDC(IntPtr.Zero);
             try
@@ -60,6 +87,15 @@ namespace LiteRec
                 // 用持久 Bitmap 包裹同一块 DIB 内存，避免每帧复制
                 _wrapped = new Bitmap(_width, _height, _width * 4,
                     PixelFormat.Format32bppRgb, _bits);
+
+                // 可选：加载高分辨率光标
+                if (drawCursor && !string.IsNullOrEmpty(cursorImagePath))
+                {
+                    _cursorImg = CursorImage.Load(cursorImagePath, 256);
+                    _memG = Graphics.FromImage(_wrapped);
+                    _memG.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    _memG.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                }
             }
             finally
             {
@@ -91,7 +127,7 @@ namespace LiteRec
                         int cy = ci.ptScreenPos.Y - _srcY;
                         if (cx > -64 && cy > -64 && cx < _width + 64 && cy < _height + 64)
                         {
-                            Gdi.DrawIconEx(_memDC, cx, cy, ci.hCursor, 0, 0, 0, IntPtr.Zero, Gdi.DI_NORMAL);
+                            DrawCursor(ci.hCursor, cx, cy);
                         }
                     }
                 }
@@ -101,6 +137,69 @@ namespace LiteRec
             {
                 Gdi.ReleaseDC(IntPtr.Zero, screenDC);
             }
+        }
+
+        /// <summary>把光标画到 DIB 上，支持放大。热点位置保证缩放后仍对准真实点击点。</summary>
+        private void DrawCursor(IntPtr hCursor, int x, int y)
+        {
+            // 优先用高分辨率光标图（1:1 或缩放后都清晰）
+            if (_cursorImg != null && _memG != null)
+            {
+                int w = (int)Math.Round(_cursorImg.Image.Width * _cursorScale);
+                int h = (int)Math.Round(_cursorImg.Image.Height * _cursorScale);
+                if (w < 1) w = 1;
+                if (h < 1) h = 1;
+                int dx = x - (int)Math.Round(_cursorImg.HotspotX * _cursorScale);
+                int dy = y - (int)Math.Round(_cursorImg.HotspotY * _cursorScale);
+
+                // 1:1 用最近邻（最锐），缩放用双三次（最平滑）
+                _memG.InterpolationMode = (_cursorScale == 1.0)
+                    ? InterpolationMode.NearestNeighbor
+                    : InterpolationMode.HighQualityBicubic;
+                _memG.DrawImage(_cursorImg.Image, new Rectangle(dx, dy, w, h),
+                    0, 0, _cursorImg.Image.Width, _cursorImg.Image.Height,
+                    GraphicsUnit.Pixel);
+                _memG.Flush(FlushIntention.Sync);
+                return;
+            }
+
+            // 光标句柄变了才查热点（避免每帧分配两张 GDI 位图）
+            if (hCursor != _lastCursor)
+            {
+                _lastCursor = hCursor;
+                _hotspotX = 0;
+                _hotspotY = 0;
+                ICONINFO ii;
+                if (Gdi.GetIconInfo(hCursor, out ii))
+                {
+                    _hotspotX = ii.xHotspot;
+                    _hotspotY = ii.yHotspot;
+                    // GetIconInfo 会创建两张位图，必须释放，否则每换一次光标泄漏一次
+                    if (ii.hbmMask != IntPtr.Zero) Gdi.DeleteObject(ii.hbmMask);
+                    if (ii.hbmColor != IntPtr.Zero) Gdi.DeleteObject(ii.hbmColor);
+                }
+            }
+
+            if (_cursorScale <= 1.0)
+            {
+                // 原始尺寸：和以前的 0,0 默认尺寸一致
+                Gdi.DrawIconEx(_memDC, x, y, hCursor, 0, 0, 0, IntPtr.Zero, Gdi.DI_NORMAL);
+                return;
+            }
+
+            int baseW = Gdi.GetSystemMetrics(13);   // SM_CXCURSOR
+            int baseH = Gdi.GetSystemMetrics(14);   // SM_CYCURSOR
+            if (baseW <= 0) baseW = 32;
+            if (baseH <= 0) baseH = 32;
+
+            int scaledW = (int)Math.Round(baseW * _cursorScale);
+            int scaledH = (int)Math.Round(baseH * _cursorScale);
+
+            // DrawIconEx 以左上角定位；放大后要按热点偏移回去，尖角才对得准
+            int ox = (int)Math.Round(_hotspotX * (_cursorScale - 1.0));
+            int oy = (int)Math.Round(_hotspotY * (_cursorScale - 1.0));
+
+            Gdi.DrawIconEx(_memDC, x - ox, y - oy, hCursor, scaledW, scaledH, 0, IntPtr.Zero, Gdi.DI_NORMAL);
         }
 
         /// <summary>
@@ -160,10 +259,21 @@ namespace LiteRec
             if (_disposed) return;
             _disposed = true;
 
+            // 先放 Graphics（它引用着 _wrapped），再放 Bitmap
+            if (_memG != null)
+            {
+                _memG.Dispose();
+                _memG = null;
+            }
             if (_wrapped != null)
             {
                 _wrapped.Dispose();
                 _wrapped = null;
+            }
+            if (_cursorImg != null)
+            {
+                _cursorImg.Dispose();
+                _cursorImg = null;
             }
             if (_encoderParams != null)
             {

@@ -57,9 +57,23 @@ namespace LiteRec
             return null;
         }
 
+        /// <summary>
+        /// 光标放大倍数。通过命令行 `--cursor-scale 3` 指定，
+        /// 供录制宣传片/教程时把鼠标指针放大，默认 1.0（原始大小）。
+        /// </summary>
+        internal static double CursorScale = 1.0;
+
+        /// <summary>
+        /// 可选的高分辨率光标文件（.cur）。指定后用它内嵌的大尺寸帧代替系统光标，
+        /// 这样放大时不会因为拉伸 32px 原图而锯齿。
+        /// </summary>
+        internal static string CursorImagePath = null;
+
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
+            ParseArgs(args);
+
             // DPI 感知：保证坐标与像素 1:1，避免缩放导致模糊/裁切
             try { Gdi.SetProcessDPIAware(); }
             catch { }
@@ -75,6 +89,39 @@ namespace LiteRec
             };
 
             Application.Run(new MainForm());
+        }
+
+        private static void ParseArgs(string[] args)
+        {
+            if (args == null) return;
+            for (int i = 0; i < args.Length; i++)
+            {
+                string a = args[i];
+                if (a != null && a.Equals("--cursor-scale", StringComparison.OrdinalIgnoreCase)
+                    && i + 1 < args.Length)
+                {
+                    double v;
+                    if (double.TryParse(args[i + 1],
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out v))
+                    {
+                        if (v < 0.5) v = 0.5;
+                        if (v > 8.0) v = 8.0;
+                        CursorScale = v;
+                    }
+                    i++;
+                }
+                else if (a != null && a.Equals("--cursor-image", StringComparison.OrdinalIgnoreCase)
+                    && i + 1 < args.Length)
+                {
+                    string p = args[i + 1];
+                    if (!string.IsNullOrEmpty(p) && System.IO.File.Exists(p))
+                    {
+                        CursorImagePath = p;
+                    }
+                    i++;
+                }
+            }
         }
     }
 }

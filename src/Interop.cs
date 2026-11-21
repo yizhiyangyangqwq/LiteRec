@@ -56,6 +56,16 @@ namespace LiteRec
         public POINT ptScreenPos;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ICONINFO
+    {
+        public bool fIcon;
+        public int xHotspot;
+        public int yHotspot;
+        public IntPtr hbmMask;
+        public IntPtr hbmColor;
+    }
+
     internal static class Gdi
     {
         public const int SRCCOPY = 0x00CC0020;
@@ -75,6 +85,13 @@ namespace LiteRec
 
         [DllImport("user32.dll")]
         public static extern bool GetCursorInfo(ref CURSORINFO pci);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetIconInfo(IntPtr hIcon, out ICONINFO piconinfo);
+
+        // SM_CXCURSOR = 13, SM_CYCURSOR = 14
+        [DllImport("user32.dll")]
+        public static extern int GetSystemMetrics(int nIndex);
 
         [DllImport("user32.dll")]
         public static extern bool DrawIconEx(IntPtr hdc, int xLeft, int yTop, IntPtr hIcon,
