@@ -35,6 +35,8 @@ namespace LiteRec
             DoubleBuffered = true;
             ClientSize = new Size(232, 52);
             Text = "LiteRec";
+            // 先算好停止按钮区域：否则在首次 OnPaint 之前点击会被当成拖动
+            _stopRect = new Rectangle(ClientSize.Width - 48, 10, 34, 32);
 
             Icon appIcon = Program.AppIcon;
             if (appIcon != null) Icon = appIcon;

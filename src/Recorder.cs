@@ -133,20 +133,25 @@ namespace LiteRec
             }
         }
 
-        public void Stop()
+        /// <summary>
+        /// 停止录制。返回 true 表示后台线程已完全收尾（文件已写完并关闭）；
+        /// false 表示超时——此时文件可能仍在写入，调用方应提示用户稍等再打开
+        /// （编码器在满载机器上收尾会明显变慢，固定短超时会导致"文件没写完"）。
+        /// </summary>
+        public bool Stop()
         {
-            if (!_running && _thread == null) return;
+            if (!_running && _thread == null) return true;
             _stop = true;
             Thread t = _thread;
+            bool finished = true;
             if (t != null)
             {
-                if (!t.Join(6000))
-                {
-                    // 编码器卡死时不强杀，交给 GC
-                }
+                // 15 秒：长录像收尾要 flush 整个封装，6 秒在慢机器上不够
+                finished = t.Join(15000);
             }
             _thread = null;
             _running = false;
+            return finished;
         }
 
         private void Run()

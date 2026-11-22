@@ -828,10 +828,12 @@ namespace LiteRec
         {
             if (_recorder == null) return;
 
+            bool finished = true;
             try
             {
-                _recorder.Stop();
-                SetStatus("正在保存…");
+                // Stop 会等后台线程把封装写完（满载机器上收尾可能较慢）
+                finished = _recorder.Stop();
+                SetStatus(finished ? "正在保存…" : "正在保存（较慢）…");
             }
             catch (Exception ex)
             {
@@ -857,7 +859,15 @@ namespace LiteRec
             if (WindowState == FormWindowState.Minimized)
                 WindowState = FormWindowState.Normal;
 
-            SetStatus("已保存到 " + ShortFolder(_settings.OutputDir));
+            if (finished)
+            {
+                SetStatus("已保存到 " + ShortFolder(_settings.OutputDir));
+            }
+            else
+            {
+                // 后台线程还没收尾：提示用户别急着打开/拔盘
+                SetStatus("已保存到 " + ShortFolder(_settings.OutputDir) + "（仍在写入，请稍候）");
+            }
         }
 
         /// <summary>
