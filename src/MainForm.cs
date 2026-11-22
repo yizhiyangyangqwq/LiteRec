@@ -58,6 +58,8 @@ namespace LiteRec
             ClientSize = new Size(360, 190);
             DoubleBuffered = true;
             KeyPreview = true;   // 让窗体先收到按键，才能捕获快捷键
+            // 之前漏了这一行：KeyPreview 设了但事件没接，导致按任何键都不响应
+            KeyDown += OnFormKeyDown;
 
             // 标题栏与任务栏必须显式设置，否则 WinForms 会用默认的"应用"图标
             Icon appIcon = Program.AppIcon;
@@ -876,20 +878,13 @@ namespace LiteRec
 
         private void OnFormKeyDown(object sender, KeyEventArgs e)
         {
-            // 捕获模式：把任意按键设为新快捷键
+            // 只处理「捕获新快捷键」。开/停录制一律交给系统级热键：
+            // 全局热键在窗口获得焦点时同样会触发，若这里再处理一次，
+            // 同一个按键会调用两次 RecordClick（开了又立刻关），表现为"按了没反应"。
             if (CaptureHotkey(e))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
-                return;
-            }
-
-            // 普通模式：按配置的快捷键开始/停止
-            if ((int)e.KeyData == _settings.Hotkey || e.KeyCode == (Keys)_settings.Hotkey)
-            {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-                RecordClick(null, EventArgs.Empty);
             }
         }
 
