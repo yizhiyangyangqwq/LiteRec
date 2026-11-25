@@ -7,5 +7,5 @@ using System.Reflection;
 [assembly: AssemblyCompany("一只杨洋qwq")]
 [assembly: AssemblyCopyright("Made by 一只杨洋qwq")]
 [assembly: AssemblyTrademark("一只杨洋qwq")]
-[assembly: AssemblyVersion("1.3.2.0")]
-[assembly: AssemblyFileVersion("1.3.2.0")]
+[assembly: AssemblyVersion("1.3.3.0")]
+[assembly: AssemblyFileVersion("1.3.3.0")]

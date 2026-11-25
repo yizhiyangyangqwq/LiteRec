@@ -45,6 +45,9 @@ namespace LiteRec
         private volatile string _error;
         private string _fallbackReason;
         private long _framesWritten;
+        /// <summary>因跟不上节奏而主动丢弃的帧数（防止编码器积压）。</summary>
+        private long _droppedFrames;
+        public long DroppedFrames { get { return Interlocked.Read(ref _droppedFrames); } }
         private readonly ManualResetEvent _ready = new ManualResetEvent(false);
 
         // 用于 UI 显示的实时统计
@@ -67,6 +70,26 @@ namespace LiteRec
 
         /// <summary>若从 MP4 回退到 AVI，这里给出原因；否则为 null。</summary>
         public string FallbackReason { get { return _fallbackReason; } }
+
+        /// <summary>实际采用的目标帧率（可能因本机抓屏能力被下调）。</summary>
+        public int EffectiveFps { get { return _effectiveFps; } }
+        /// <summary>目标帧率是否被下调过（请求值高于本机可持续能力）。</summary>
+        public bool FpsCapped { get; private set; }
+        /// <summary>探测到的单帧抓屏耗时（毫秒），用于诊断。</summary>
+        public double ProbeMsPerFrame { get { return _probeMsPerFrame; } }
+        private int _effectiveFps;
+        private double _probeMsPerFrame;
+
+        /// <summary>把上限落到标准帧率档位，避免出现 32fps 这种怪值。</summary>
+        private static int SnapFps(int max)
+        {
+            int[] rates = new int[] { 120, 90, 60, 50, 48, 30, 25, 24, 20, 15, 10, 5 };
+            for (int i = 0; i < rates.Length; i++)
+            {
+                if (rates[i] <= max) return rates[i];
+            }
+            return 5;
+        }
 
         private AudioCapture _audioRef;
         /// <summary>是否真的在录声音（MP4 且音频流创建成功）。</summary>
@@ -134,6 +157,90 @@ namespace LiteRec
         }
 
         /// <summary>
+        /// 实测抓屏能达到的帧率，返回不超过请求值、且本机真能跑的标准帧率。
+        ///
+        /// 为什么必须做：1080p 单帧 BitBlt 约 30ms，60fps 的预算只有 16.7ms。
+        /// 若照 60fps 的节奏抓帧，编码器队列会被灌满，WriteSample 逐步阻塞到 1 秒，
+        /// 实测整段会从 28fps 崩到 1fps。降到本机可持续的帧率后完全稳定。
+        /// </summary>
+        private int ProbeFrameRate(ScreenCapture cap)
+        {
+            int requested = _opt.Fps;
+            try
+            {
+                for (int i = 0; i < 3; i++) cap.Grab();      // 预热（首帧含 DIB 首次填充）
+
+                Stopwatch sw = Stopwatch.StartNew();
+                const int probes = 10;
+                for (int i = 0; i < probes; i++) cap.Grab();
+                sw.Stop();
+
+                double ms = sw.Elapsed.TotalMilliseconds / probes;
+                _probeMsPerFrame = ms;
+                // 留 5% 容差：16.7ms 正好是 60fps 的间隔，floor(1000/16.7)=59，
+                // 不加容差会把刚好跑得动 60fps 的场景误降到 50fps。
+                int maxByCapture = ms > 0.1
+                    ? (int)Math.Floor(1000.0 / ms * 1.05)
+                    : requested;
+
+                int chosen = SnapFps(Math.Min(requested, maxByCapture));
+                FpsCapped = chosen < requested;
+                _effectiveFps = chosen;
+                return chosen;
+            }
+            catch
+            {
+                FpsCapped = false;
+                _effectiveFps = requested;
+                return requested;
+            }
+        }
+
+        /// <summary>
+        /// 实测「编码」吞吐：用真实画面往临时文件里写若干帧，量出每帧耗时。
+        /// 只测抓屏是不够的——机器空闲时抓屏只要 18ms，会误判能跑 50fps，
+        /// 但编码器在 1080p 上根本扛不住，结果队列积压、崩到个位数帧率。
+        /// </summary>
+        private int ProbeEncodeFps(ScreenCapture cap, int requested)
+        {
+            string tmp = Path.Combine(Path.GetTempPath(), "literec_probe.mp4");
+            try
+            {
+                if (File.Exists(tmp)) File.Delete(tmp);
+
+                const int frames = 8;
+                Mp4Writer pw = new Mp4Writer(tmp, cap.Width, cap.Height, requested,
+                    _opt.BitrateKbps * 1000, 1, false);
+                try
+                {
+                    long step = 10000000L / Math.Max(1, requested);
+                    Stopwatch sw = Stopwatch.StartNew();
+                    for (int i = 0; i < frames; i++)
+                    {
+                        cap.Grab();   // 用真实桌面画面，比黑帧更接近实际编码量
+                        pw.WriteFrameFrom(cap.Bits, i * step, step);
+                    }
+                    sw.Stop();
+
+                    double ms = sw.Elapsed.TotalMilliseconds / frames;
+                    int maxByEncode = ms > 0.1
+                        ? (int)Math.Floor(1000.0 / ms * 1.05)
+                        : requested;
+                    return maxByEncode;
+                }
+                finally { pw.Dispose(); }
+            }
+            catch
+            {
+                return requested;
+            }
+            finally
+            {
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            }
+        }
+
+        /// <summary>
         /// 停止录制。返回 true 表示后台线程已完全收尾（文件已写完并关闭）；
         /// false 表示超时——此时文件可能仍在写入，调用方应提示用户稍等再打开
         /// （编码器在满载机器上收尾会明显变慢，固定短超时会导致"文件没写完"）。
@@ -174,19 +281,40 @@ namespace LiteRec
                     _opt.Source.Width, _opt.Source.Height, _opt.DrawCursor,
                     _opt.CursorScale, _opt.CursorImagePath, _opt.CursorTargetPx);
 
+                // ---- 帧率自适应 ----
+                // 请求 60fps 但抓屏每帧要 30ms 以上时（1080p 常见），预算只有 16.7ms，
+                // 结果是编码器队列被灌满、WriteSample 阻塞到 1 秒，整体崩到 1~4 fps。
+                // 这里先实测抓屏速度，把目标帧率降到本机真能跑到的值。
+                int effFps = ProbeFrameRate(cap);
+
                 _actualPath = _opt.OutputPath;
 
                 if (_opt.Format == OutputFormat.Mp4)
                 {
                     MF.Check(MF.MFStartup(MF.MF_VERSION, MF.MFSTARTUP_FULL), "MFStartup");
                     mfStarted = true;
+
+                    // 抓屏也许够快，但编码器可能扛不住（1080p 上尤其明显）。
+                    // 用真实画面实测编码吞吐，取两者较小值。
+                    int encodeLimit = ProbeEncodeFps(cap, effFps);
+                    if (encodeLimit < effFps)
+                    {
+                        int capped = SnapFps(encodeLimit);
+                        if (capped < effFps)
+                        {
+                            effFps = capped;
+                            FpsCapped = true;
+                            _effectiveFps = capped;
+                        }
+                    }
+
                     int bitrate = _opt.BitrateKbps * 1000;
                     // 音频只在 MP4 下可用；AVI 容器没有音轨
                     bool withAudio = _opt.RecordAudio;
                     try
                     {
                         mp4 = new Mp4Writer(_opt.OutputPath, cap.Width, cap.Height,
-                            _opt.Fps, bitrate, 1, withAudio);
+                            effFps, bitrate, 1, withAudio);
                     }
                     catch (Exception exMp4)
                     {
@@ -197,7 +325,7 @@ namespace LiteRec
                         try { if (System.IO.File.Exists(_opt.OutputPath))
                                 System.IO.File.Delete(_opt.OutputPath); }
                         catch { }
-                        avi = new AviWriter(aviPath, cap.Width, cap.Height, _opt.Fps);
+                        avi = new AviWriter(aviPath, cap.Width, cap.Height, effFps);
                         jpegBuf = new MemoryStream(1 << 20);
                         _actualPath = aviPath;
                     }
@@ -219,7 +347,7 @@ namespace LiteRec
                 }
                 else
                 {
-                    avi = new AviWriter(_opt.OutputPath, cap.Width, cap.Height, _opt.Fps);
+                    avi = new AviWriter(_opt.OutputPath, cap.Width, cap.Height, effFps);
                     jpegBuf = new MemoryStream(1 << 20);
                 }
 
@@ -233,7 +361,7 @@ namespace LiteRec
                 Gdi.timeBeginPeriod(1);
 
                 long frameIndex = 0;
-                long frameTicks = Stopwatch.Frequency / _opt.Fps;
+                long frameTicks = Stopwatch.Frequency / effFps;
                 long startTicks = Stopwatch.GetTimestamp();
 
                 while (!_stop)
@@ -251,6 +379,16 @@ namespace LiteRec
                         continue;
                     }
 
+                    // 落后超过 3 帧：跳过本帧而不是继续往编码器里塞。
+                    // 继续塞会让队列无限堆积，WriteSample 逐步阻塞到 1 秒，
+                    // 实测整段会崩到 1~4 fps（用户反馈的"越录帧数越低"就是这个）。
+                    if (now - deadline > frameTicks * 3)
+                    {
+                        frameIndex = (now - startTicks) / frameTicks + 1;
+                        Interlocked.Increment(ref _droppedFrames);
+                        continue;
+                    }
+
                     cap.Grab();
 
                     // 每帧把采集线程攒的 PCM 写成音频 sample（同一线程，MF 要求）
@@ -261,7 +399,7 @@ namespace LiteRec
                     long nowTicks = Stopwatch.GetTimestamp();
                     long elapsedTicks = nowTicks - startTicks;
                     long hns = elapsedTicks * 10000000L / Stopwatch.Frequency;
-                    long hnsFrame = 10000000L / _opt.Fps;
+                    long hnsFrame = 10000000L / effFps;
 
                     if (avi != null)
                     {

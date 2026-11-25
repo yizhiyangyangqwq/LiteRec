@@ -791,6 +791,13 @@ namespace LiteRec
                         + Path.GetFileName(_recorder.ActualPath));
                 }
 
+                // 请求的帧率超过本机抓屏能力时会被自动下调（否则编码器会堆积到 1fps）
+                if (_recorder.FpsCapped)
+                {
+                    SetStatus("帧率已自动降到 " + _recorder.EffectiveFps
+                        + " fps（本机抓屏上限，原设 " + opt.Fps + "）");
+                }
+
                 // 音频失败要在开始前就说清楚，别等录完才发现是静音文件。
                 // 优先级最高（覆盖上面的提示），因为这是用户最容易忽略的失败。
                 if (opt.RecordAudio && !string.IsNullOrEmpty(_recorder.AudioError))
